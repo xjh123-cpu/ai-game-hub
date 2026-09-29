@@ -3,16 +3,29 @@
 实现「AI 出题 -> 玩家作答 -> AI 裁判 -> 更新积分」的完整闭环。
 出题用高温保证多样性，裁判用低温保证判定稳定（生成与判定分离）。
 """
+import random
+
 from llm import chat_json, usage_of
 from prompts import QUIZ_PROMPT, JUDGE_PROMPT
 
 
-def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0):
+def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
+            exclude_answers=None):
     """让大模型围绕主题生成一道猜谜题。
 
+    exclude_answers: 已出过的谜底列表，会注入提示词禁止重复，提升连续出题的多样性。
     返回：(data, usage)，data 为 {"question", "answer", "hint"}
     """
-    prompt = QUIZ_PROMPT.format(topic=topic, difficulty=difficulty)
+    exclude_line = ""
+    if exclude_answers:
+        items = "、".join(dict.fromkeys(str(a) for a in exclude_answers))
+        exclude_line = (f"5. 以下谜底已经出过，本轮绝不能再出，"
+                        f"也不得出其同义词或别称：{items}。")
+    prompt = QUIZ_PROMPT.format(
+        topic=topic, difficulty=difficulty,
+        nonce=random.randint(1000, 9999),
+        exclude_line=exclude_line,
+    )
     data, resp = chat_json(
         messages=[{"role": "user", "content": prompt}],
         temperature=temperature,

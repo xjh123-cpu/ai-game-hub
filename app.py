@@ -177,13 +177,18 @@ def _generate_quiz_question(topic: str, difficulty: str):
     """生成一道新题写入会话状态；判定结果横幅随之清除。失败时抛出异常。"""
     if not rate_limit_ok():
         st.stop()
-    with st.spinner("AI 出题中…"):
-        data, usage = ai_quiz(topic, difficulty, temperature=1.0)
-    add_usage(usage)
     q = st.session_state.quiz
+    # 传入本局已出过的谜底，避免 AI 反复出同一答案
+    past = q.get("past_answers") or []
+    with st.spinner("AI 出题中…"):
+        data, usage = ai_quiz(topic, difficulty, temperature=1.0,
+                              exclude_answers=past)
+    add_usage(usage)
     q.update({"question": data["question"], "answer": data["answer"],
               "hint": data["hint"], "hint_used": False, "answered": False,
               "last_result": None})
+    past.append(data["answer"])
+    q["past_answers"] = past[-10:]  # 只保留最近 10 个，避免提示词无限膨胀
     q["round"] += 1
 
 
