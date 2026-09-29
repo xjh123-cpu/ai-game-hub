@@ -47,26 +47,30 @@ def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
     exclude_line = ""
     if exclude_answers:
         items = "、".join(dict.fromkeys(str(a) for a in exclude_answers))
-        exclude_line = (f"5. 以下谜底已经出过，本轮绝不能再出，"
+        exclude_line = (f"6. 以下谜底已经出过，本轮绝不能再出，"
                         f"也不得出其同义词或别称：{items}。")
 
     total = _empty_usage()
-    last_reason = None
+    feedback = None  # 上一版题目不合格的原因，反馈给模型重新出题
     for _ in range(max_fact_retries + 1):
         prompt = QUIZ_PROMPT.format(
             topic=topic, difficulty=difficulty,
             nonce=random.randint(1000, 9999),
             exclude_line=exclude_line,
         )
-        if last_reason:
-            prompt += (f"\n注意：你上一版谜面存在事实错误（{last_reason}），"
-                       f"本轮必须改用事实准确的内容重新出题。")
+        if feedback:
+            prompt += (f"\n注意：你上一版题目不合格（{feedback}），"
+                       f"本轮必须修正该问题后重新出题。")
         data, resp = chat_json(
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
         )
         _merge_usage(total, usage_of(resp))
         _validate_quiz(data)
+        if _answer_leaked(data):
+            feedback = (f"谜面或提示中直接出现了谜底「{data['answer']}」，"
+                        f"泄露了答案，必须用间接描述让玩家猜")
+            continue
         try:
             ok, reason, check_usage = _fact_check(topic, data)
         except Exception:  # noqa: BLE001 - 核查通道故障时放行，保证游戏可用
@@ -74,10 +78,10 @@ def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
         _merge_usage(total, check_usage)
         if ok:
             return data, total
-        last_reason = reason
+        feedback = f"事实核查未通过：{reason}"
     raise ValueError(
-        f"连续 {max_fact_retries + 1} 次生成的谜题未通过事实核查"
-        f"（最近一次问题：{last_reason}），请重试或更换主题。"
+        f"连续 {max_fact_retries + 1} 次生成的谜题不合格"
+        f"（最近一次问题：{feedback}），请重试或更换主题。"
     )
 
 
@@ -99,6 +103,19 @@ def judge(question: str, answer: str, user_reply: str):
     data["correct"] = bool(data["correct"])
     data["comment"] = str(data.get("comment", ""))
     return data, usage_of(resp)
+
+
+def _answer_leaked(data: dict) -> bool:
+    """检查谜底是否直接出现在谜面或提示中（泄露答案）。
+
+    例如谜面「白天是鸟儿，晚上是兽……名字叫蝙蝠」而谜底为「蝙蝠」，
+    属于把答案写进了题目，必须拦截重新出题。
+    """
+    answer = str(data.get("answer", "")).strip()
+    if not answer:
+        return False
+    text = str(data.get("question", "")) + str(data.get("hint", ""))
+    return answer in text
 
 
 def _validate_quiz(data: dict):
