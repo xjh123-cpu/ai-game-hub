@@ -6,32 +6,79 @@
 import random
 
 from llm import chat_json, usage_of
-from prompts import QUIZ_PROMPT, JUDGE_PROMPT
+from prompts import QUIZ_PROMPT, JUDGE_PROMPT, QUIZ_FACT_CHECK_PROMPT
+
+
+def _empty_usage() -> dict:
+    return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def _merge_usage(acc: dict, usage: dict | None) -> dict:
+    """把单次调用用量累加进累计器。"""
+    if usage:
+        for key in acc:
+            acc[key] += usage.get(key, 0)
+    return acc
+
+
+def _fact_check(topic: str, data: dict):
+    """低温事实核查：核实谜面史实是否属实。返回 (ok, reason, usage)。"""
+    prompt = QUIZ_FACT_CHECK_PROMPT.format(
+        topic=topic, question=data["question"],
+        answer=data["answer"], hint=data["hint"],
+    )
+    result, resp = chat_json(
+        messages=[{"role": "user", "content": prompt}], temperature=0.0
+    )
+    usage = usage_of(resp)
+    ok = bool(result.get("ok", False))
+    return ok, str(result.get("reason", "")), usage
 
 
 def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
-            exclude_answers=None):
-    """让大模型围绕主题生成一道猜谜题。
+            exclude_answers=None, max_fact_retries: int = 2):
+    """让大模型围绕主题生成一道猜谜题，并经事实核查把关。
 
-    exclude_answers: 已出过的谜底列表，会注入提示词禁止重复，提升连续出题的多样性。
-    返回：(data, usage)，data 为 {"question", "answer", "hint"}
+    exclude_answers: 已出过的谜底列表，注入提示词禁止重复。
+    生成后用低温核查史实，未通过则把错误点反馈给模型重新出题；
+    连续重试仍不通过则抛出 ValueError，避免把胡编的题发给玩家。
+    返回：(data, usage)，data 为 {"question", "answer", "hint"}，usage 为全流程累计 token。
     """
     exclude_line = ""
     if exclude_answers:
         items = "、".join(dict.fromkeys(str(a) for a in exclude_answers))
         exclude_line = (f"5. 以下谜底已经出过，本轮绝不能再出，"
                         f"也不得出其同义词或别称：{items}。")
-    prompt = QUIZ_PROMPT.format(
-        topic=topic, difficulty=difficulty,
-        nonce=random.randint(1000, 9999),
-        exclude_line=exclude_line,
+
+    total = _empty_usage()
+    last_reason = None
+    for _ in range(max_fact_retries + 1):
+        prompt = QUIZ_PROMPT.format(
+            topic=topic, difficulty=difficulty,
+            nonce=random.randint(1000, 9999),
+            exclude_line=exclude_line,
+        )
+        if last_reason:
+            prompt += (f"\n注意：你上一版谜面存在事实错误（{last_reason}），"
+                       f"本轮必须改用事实准确的内容重新出题。")
+        data, resp = chat_json(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+        )
+        _merge_usage(total, usage_of(resp))
+        _validate_quiz(data)
+        try:
+            ok, reason, check_usage = _fact_check(topic, data)
+        except Exception:  # noqa: BLE001 - 核查通道故障时放行，保证游戏可用
+            return data, total
+        _merge_usage(total, check_usage)
+        if ok:
+            return data, total
+        last_reason = reason
+    raise ValueError(
+        f"连续 {max_fact_retries + 1} 次生成的谜题未通过事实核查"
+        f"（最近一次问题：{last_reason}），请重试或更换主题。"
     )
-    data, resp = chat_json(
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-    )
-    _validate_quiz(data)
-    return data, usage_of(resp)
 
 
 def judge(question: str, answer: str, user_reply: str):
