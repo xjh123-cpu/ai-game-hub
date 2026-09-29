@@ -3,9 +3,10 @@
 只负责界面与流程编排，业务逻辑通过 import 调用 llm.py / prompts.py / games 包。
 运行方式：streamlit run app.py
 """
+import time
+
 import streamlit as st
 
-from llm import get_client
 from prompts import ADVENTURE_SYSTEM_PROMPT
 from games.adventure import new_history, adventure_turn
 from games.quiz import ai_quiz, judge
@@ -13,6 +14,13 @@ from games.quiz import ai_quiz, judge
 # 智谱 glm-4-flash 为免费模型；此处保留单价占位，便于后续切换付费模型时估算成本
 COST_PER_M_INPUT = 0.0      # 输入单价（元 / 百万 token）
 COST_PER_M_OUTPUT = 0.0     # 输出单价（元 / 百万 token）
+
+# ---------------------------------------------------------------------------
+# 限流配置（公开部署防刷量，对应拓展任务）
+# ---------------------------------------------------------------------------
+RATE_MIN_INTERVAL = 2.0     # 相邻两次 API 调用的最小间隔（秒）
+RATE_MAX_PER_MIN = 10       # 单会话每分钟最多 API 调用次数
+RATE_SESSION_CAP = 200      # 单会话累计调用上限
 
 st.set_page_config(page_title="AI 游戏乐园", page_icon="🎮", layout="wide")
 
@@ -31,6 +39,9 @@ if "quiz" not in st.session_state:
                              "score": 0, "round": 0, "hint_used": False,
                              "answered": False}
 
+if "call_times" not in st.session_state:
+    st.session_state.call_times = []
+
 
 def add_usage(usage):
     """累计 token 用量。"""
@@ -38,6 +49,23 @@ def add_usage(usage):
     st.session_state.tokens["completion"] += usage["completion_tokens"]
     st.session_state.tokens["total"] += usage["total_tokens"]
     st.session_state.tokens["calls"] += 1
+
+
+def rate_limit_ok() -> bool:
+    """会话级限流：间隔 / 每分钟次数 / 累计上限，防止公开部署后被恶意刷量。"""
+    now = time.time()
+    times = st.session_state.call_times
+    if len(times) >= RATE_SESSION_CAP:
+        st.error(f"已达单会话调用上限（{RATE_SESSION_CAP} 次），请点击「重置全部状态」后继续。")
+        return False
+    if len([t for t in times if now - t < 60]) >= RATE_MAX_PER_MIN:
+        st.warning(f"调用太频繁（每分钟限 {RATE_MAX_PER_MIN} 次），请休息几秒再试。")
+        return False
+    if times and now - times[-1] < RATE_MIN_INTERVAL:
+        st.warning("操作太快啦，请间隔约 2 秒再试。")
+        return False
+    st.session_state.call_times.append(now)
+    return True
 
 
 def estimated_cost():
@@ -60,6 +88,7 @@ st.sidebar.metric("输入 Token", f"{t['prompt']:,}")
 st.sidebar.metric("输出 Token", f"{t['completion']:,}")
 st.sidebar.metric("总 Token", f"{t['total']:,}")
 st.sidebar.caption(f"预估成本：¥{estimated_cost():.6f}（glm-4-flash 免费模型）")
+st.sidebar.caption(f"🔒 限流：间隔 {RATE_MIN_INTERVAL:.0f}s / 每分钟 {RATE_MAX_PER_MIN} 次 / 每会话 {RATE_SESSION_CAP} 次")
 
 if st.sidebar.button("🔄 重置全部状态"):
     for key in ("adv", "quiz"):
@@ -116,6 +145,8 @@ def render_adventure():
 
 def _do_adventure_turn(action: str):
     """执行一轮冒险并更新状态（带一次状态校验失败重试）。"""
+    if not rate_limit_ok():
+        return
     adv = st.session_state.adv
     for attempt in range(2):
         try:
@@ -123,6 +154,9 @@ def _do_adventure_turn(action: str):
             break
         except Exception as exc:
             if attempt == 0:
+                # 清理上一次失败尝试遗留的 user 消息，避免历史里重复记录同一行动
+                while adv["history"] and adv["history"][-1]["role"] == "user":
+                    adv["history"].pop()
                 st.warning(f"模型返回异常，正在重试…（{exc}）")
                 continue
             st.error(f"游戏出错了：{exc}")
@@ -150,6 +184,8 @@ def render_quiz():
     difficulty = col2.selectbox("难度", ["简单", "中等", "困难"], index=1)
 
     if st.button("🎲 生成新题目", type="primary"):
+        if not rate_limit_ok():
+            st.stop()
         with st.spinner("AI 出题中…"):
             try:
                 data, usage = ai_quiz(topic, difficulty, temperature=1.0)
@@ -177,6 +213,8 @@ def render_quiz():
             reply = st.text_input("你的答案：")
             submit = st.form_submit_button("✅ 提交答案")
             if submit and reply.strip():
+                if not rate_limit_ok():
+                    st.stop()
                 with st.spinner("AI 裁判判定中…"):
                     try:
                         result, usage = judge(q["question"], q["answer"], reply.strip())

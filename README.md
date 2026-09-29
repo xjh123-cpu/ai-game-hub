@@ -42,10 +42,32 @@ pip install -r requirements.txt
 
 # 2. 运行桌面应用（首次启动会弹出 API Key 设置窗口）
 python main.py
+
+# 或运行网页版（可部署到云端）
+streamlit run app.py
 ```
 
 > API Key 可在应用内「⚙️ API Key 设置」中填写，仅保存在本机 `~/.ai_game_hub/config.json`；
 > 也可设置环境变量 `GLM_API_KEY`。
+
+## 公开部署（步骤 2~4：Streamlit Community Cloud，免费）
+
+云端部署使用**网页版** `app.py`（桌面版 `main.py` 依赖本地窗口，无法部署）。
+
+1. **推送代码到 GitHub**：`.env`、`.streamlit/secrets.toml` 均已被 `.gitignore` 排除，不会泄露密钥
+2. **创建应用**：打开 [share.streamlit.io](https://share.streamlit.io) → GitHub 登录 → **Create app** → 选择仓库与分支，主文件路径填 `app.py`
+3. **配置 Secrets**（步骤 3：密钥走平台管理，不写入代码）：应用页 **Settings → Secrets**，填入：
+   ```toml
+   GLM_API_KEY = "你的智谱API密钥"
+   ```
+   保存后应用自动重启生效（`llm.py` 会自动从 `st.secrets` 读取）
+4. **公开链接与反馈**（步骤 4）：部署完成后获得 `https://<应用名>.streamlit.app`，发给同学试用收集反馈；录制 3 分钟演示视频（建议结构：30s 介绍 → 60s 文字冒险 → 60s 猜谜 → 30s 亮点与评估迭代）
+
+> 备选平台：Hugging Face Spaces（新建 Space 选 Streamlit 模板，在 Settings → Variables and secrets 里配置 `GLM_API_KEY`）。
+
+### 防刷量限流（注意事项）
+
+公开链接任何人可访问，`app.py` 内置**会话级限流**：相邻调用 ≥2 秒、每分钟 ≤10 次、单会话累计 ≤200 次，超限自动拦截并提示。如需调整，修改 `app.py` 顶部 `RATE_MIN_INTERVAL` / `RATE_MAX_PER_MIN` / `RATE_SESSION_CAP` 三个常量。
 
 ## 打包为 Windows 可执行文件（双击即用）
 

@@ -1,2 +1,4 @@
 openai>=1.30
-pywebview>=5.0
+streamlit>=1.36
+# pywebview 仅桌面版（main.py）需要，云端 Linux 部署时跳过
+pywebview>=5.0; sys_platform == "win32"

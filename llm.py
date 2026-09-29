@@ -50,8 +50,16 @@ _client = None
 
 
 def _resolve_api_key() -> str:
-    """按优先级解析 API Key：环境变量 -> 运行时设置 -> 本地 config.json。"""
+    """按优先级解析 API Key：环境变量 -> st.secrets -> 本地 config.json。"""
     key = os.environ.get("GLM_API_KEY")
+    if key:
+        return key
+    try:  # 云端部署（Streamlit Cloud / HF Spaces）：从平台 Secrets 读取
+        import streamlit as st
+
+        key = st.secrets.get("GLM_API_KEY", "")
+    except Exception:  # noqa: BLE001 - 非 Streamlit 环境静默跳过
+        key = ""
     if key:
         return key
     try:
