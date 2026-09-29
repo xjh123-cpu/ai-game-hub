@@ -149,19 +149,20 @@ def _do_adventure_turn(action: str):
     if not rate_limit_ok():
         return
     adv = st.session_state.adv
-    for attempt in range(2):
-        try:
-            state, usage = adventure_turn(adv["history"], action, temperature=0.9)
-            break
-        except Exception as exc:
-            if attempt == 0:
-                # 清理上一次失败尝试遗留的 user 消息，避免历史里重复记录同一行动
-                while adv["history"] and adv["history"][-1]["role"] == "user":
-                    adv["history"].pop()
-                st.warning(f"模型返回异常，正在重试…（{exc}）")
-                continue
-            st.error(f"游戏出错了：{exc}")
-            return
+    with st.spinner("🧙 GM 正在构思剧情，请稍候（通常 5~15 秒）…"):
+        for attempt in range(2):
+            try:
+                state, usage = adventure_turn(adv["history"], action, temperature=0.9)
+                break
+            except Exception as exc:
+                if attempt == 0:
+                    # 清理上一次失败尝试遗留的 user 消息，避免历史里重复记录同一行动
+                    while adv["history"] and adv["history"][-1]["role"] == "user":
+                        adv["history"].pop()
+                    st.warning(f"模型返回异常，正在重试…（{exc}）")
+                    continue
+                st.error(f"游戏出错了：{exc}")
+                return
     add_usage(usage)
     adv["story"] = state.get("story", "")
     adv["options"] = state.get("options", [])
