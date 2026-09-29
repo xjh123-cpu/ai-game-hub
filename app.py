@@ -38,7 +38,7 @@ if "quiz" not in st.session_state:
     # 初始赠送 3 积分：保证新玩家第一题就能兑换提示，之后靠答题赚分
     st.session_state.quiz = {"question": None, "answer": None, "hint": None,
                              "score": 3, "round": 0, "hint_used": False,
-                             "answered": False}
+                             "answered": False, "last_result": None}
 
 if "call_times" not in st.session_state:
     st.session_state.call_times = []
@@ -173,9 +173,23 @@ def _do_adventure_turn(action: str):
 # ===========================================================================
 # 游戏二：AI 猜谜闯关
 # ===========================================================================
+def _generate_quiz_question(topic: str, difficulty: str):
+    """生成一道新题写入会话状态；判定结果横幅随之清除。失败时抛出异常。"""
+    if not rate_limit_ok():
+        st.stop()
+    with st.spinner("AI 出题中…"):
+        data, usage = ai_quiz(topic, difficulty, temperature=1.0)
+    add_usage(usage)
+    q = st.session_state.quiz
+    q.update({"question": data["question"], "answer": data["answer"],
+              "hint": data["hint"], "hint_used": False, "answered": False,
+              "last_result": None})
+    q["round"] += 1
+
+
 def render_quiz():
     st.title("🧩 AI 猜谜闯关")
-    st.caption("AI 出题，你来作答。答对得分，答不出可用积分兑换提示。")
+    st.caption("AI 出题，你来作答。答对 +5 分并自动跳下一题，答不出可用积分兑换提示。")
 
     q = st.session_state.quiz
     st.markdown(f"**当前积分：{q['score']}**　|　已答题数：{q['round']}")
@@ -185,23 +199,23 @@ def render_quiz():
     difficulty = col2.selectbox("难度", ["简单", "中等", "困难"], index=1)
 
     if st.button("🎲 生成新题目", type="primary"):
-        if not rate_limit_ok():
-            st.stop()
-        with st.spinner("AI 出题中…"):
-            try:
-                data, usage = ai_quiz(topic, difficulty, temperature=1.0)
-            except Exception as exc:
-                st.error(f"出题失败：{exc}")
-                return
-        add_usage(usage)
-        q.update({"question": data["question"], "answer": data["answer"],
-                  "hint": data["hint"], "hint_used": False, "answered": False})
-        q["round"] += 1
-        st.rerun()
+        try:
+            _generate_quiz_question(topic, difficulty)
+            st.rerun()
+        except Exception as exc:
+            st.error(f"出题失败：{exc}")
 
     if q["question"]:
         st.markdown("### 🎯 题目")
         st.info(q["question"])
+
+        # 上一题的判定结果：存会话状态持久显示，不会被页面刷新冲掉
+        if q.get("last_result"):
+            r = q["last_result"]
+            if r["correct"]:
+                st.success(f"✅ 上一题回答正确！+5 分。{r['comment']}")
+            else:
+                st.error(f"❌ 上一题回答错误。{r['comment']}　**正确答案：{r['answer']}**")
 
         if st.button("💡 消耗 1 积分查看提示", disabled=q["hint_used"] or q["score"] < 1):
             q["hint_used"] = True
@@ -224,13 +238,19 @@ def render_quiz():
                         return
                 add_usage(usage)
                 q["answered"] = True
+                q["last_result"] = {"correct": result["correct"],
+                                    "comment": result["comment"],
+                                    "answer": q["answer"]}
                 if result["correct"]:
                     q["score"] += 5
-                    st.success(f"✅ 回答正确！+5 分。{result['comment']}")
+                    try:
+                        with st.spinner("🎉 答对了！正在生成下一题…"):
+                            _generate_quiz_question(topic, difficulty)
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"下一题生成失败：{exc}，可点击「生成新题目」重试")
                 else:
-                    st.error(f"❌ 回答错误。{result['comment']}")
-                st.caption(f"正确答案：{q['answer']}")
-                st.rerun()
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
