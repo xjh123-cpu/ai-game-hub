@@ -1,0 +1,17 @@
+# 密钥与敏感信息
+.env
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 打包产物
+build/
+dist/
+*.exe
+
+# 运行数据与缓存
+data/*.json

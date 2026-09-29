@@ -1,0 +1,45 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pywebview pyinstaller pythonnet openai
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller build.spec --noconfirm
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          if (Test-Path "dist\AI游戏乐园.exe") {
+            $size = (Get-Item "dist\AI游戏乐园.exe").Length
+            Write-Host "OK: AI游戏乐园.exe generated, size=$($size) bytes"
+          } else {
+            Write-Error "EXE not found"
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Game-Hub-Windows
+          path: dist/AI游戏乐园.exe
+          retention-days: 30

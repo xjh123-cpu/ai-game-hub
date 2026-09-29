@@ -1,0 +1,2 @@
+openai>=1.30
+pywebview>=5.0

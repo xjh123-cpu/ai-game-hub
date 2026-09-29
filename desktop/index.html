@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 游戏乐园</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ============ API Key 设置弹窗 ============ -->
+  <div id="key-modal" class="modal hidden">
+    <div class="modal-box">
+      <h2>🔑 设置 API Key</h2>
+      <p class="muted">请输入智谱 GLM 的 API Key（仅保存在本机）</p>
+      <input id="key-input" type="password" placeholder="粘贴你的 API Key" autocomplete="off">
+      <div class="modal-actions">
+        <button id="key-cancel" class="btn-ghost">取消</button>
+        <button id="key-save" class="btn-primary">保存</button>
+      </div>
+      <p id="key-msg" class="msg"></p>
+    </div>
+  </div>
+
+  <!-- ============ 游戏大厅 ============ -->
+  <section id="view-home" class="view">
+    <header class="hero">
+      <h1>🎮 AI 游戏乐园</h1>
+      <p class="subtitle">由大模型驱动的互动小游戏</p>
+    </header>
+    <div class="cards">
+      <div class="card" data-game="adventure">
+        <div class="card-icon">🏰</div>
+        <h2>AI 文字冒险</h2>
+        <p>实时生成剧情，你的每个选择都改变故事走向</p>
+        <div class="card-stat">最高回合 <span id="adv-high">0</span></div>
+      </div>
+      <div class="card" data-game="quiz">
+        <div class="card-icon">🧩</div>
+        <h2>AI 猜谜闯关</h2>
+        <p>AI 出题 + AI 裁判，连击加分挑战最高分</p>
+        <div class="card-stat">最高分 <span id="quiz-high">0</span></div>
+      </div>
+    </div>
+    <footer class="home-footer">
+      <button id="btn-settings" class="btn-ghost">⚙️ API Key 设置</button>
+    </footer>
+  </section>
+
+  <!-- ============ 文字冒险 ============ -->
+  <section id="view-adventure" class="view hidden">
+    <header class="bar">
+      <button class="btn-back" data-back>← 返回</button>
+      <div class="bar-title">🏰 AI 文字冒险</div>
+      <div class="bar-right">
+        <span class="pill">回合 <span id="adv-turns">0</span></span>
+        <button id="btn-adv-save" class="btn-mini">💾 存档</button>
+        <button id="btn-adv-load" class="btn-mini">📂 读档</button>
+      </div>
+    </header>
+    <div id="adv-story" class="story-box">
+      <p class="placeholder">点击「开始冒险」进入迷雾林，剧情将实时生成……</p>
+    </div>
+    <div id="adv-options" class="options-row"></div>
+    <div id="adv-input-row" class="input-row">
+      <input id="adv-input" type="text" placeholder="输入你的行动，或点击上方选项">
+      <button id="btn-adv-act" class="btn-primary">行动</button>
+    </div>
+    <div id="adv-over-row" class="over-row hidden">
+      <button id="btn-adv-restart" class="btn-primary">🎲 再来一局</button>
+    </div>
+  </section>
+
+  <!-- ============ 猜谜闯关 ============ -->
+  <section id="view-quiz" class="view hidden">
+    <header class="bar">
+      <button class="btn-back" data-back>← 返回</button>
+      <div class="bar-title">🧩 AI 猜谜闯关</div>
+      <div class="bar-right">
+        <span class="pill">积分 <span id="quiz-score">0</span></span>
+        <span class="pill" id="quiz-combo-pill">连击 <span id="quiz-combo">0</span></span>
+        <span class="pill">最高 <span id="quiz-high2">0</span></span>
+      </div>
+    </header>
+    <div class="quiz-setup">
+      <input id="quiz-topic" type="text" value="动物" placeholder="题目主题，如：动物">
+      <select id="quiz-difficulty">
+        <option value="简单">简单</option>
+        <option value="中等" selected>中等</option>
+        <option value="困难">困难</option>
+      </select>
+      <button id="btn-quiz-new" class="btn-primary">🎲 出题</button>
+    </div>
+    <div id="quiz-question" class="quiz-question-box">
+      <p class="placeholder">选择主题与难度，点击「出题」开始挑战</p>
+    </div>
+    <div id="quiz-hint" class="hint-box hidden"></div>
+    <div class="quiz-answer-row">
+      <input id="quiz-input" type="text" placeholder="输入你的答案">
+      <button id="btn-quiz-hint" class="btn-ghost">💡 提示(-1)</button>
+      <button id="btn-quiz-submit" class="btn-primary">提交</button>
+    </div>
+    <div id="quiz-result" class="result-box"></div>
+  </section>
+
+  <!-- ============ 加载遮罩 ============ -->
+  <div id="loading" class="loading hidden">
+    <div class="spinner"></div>
+    <p>AI 思考中…</p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
