@@ -1,5 +1,8 @@
 # AI 游戏乐园（AI Game Hub）
 
+> 🌐 **在线体验：** https://ai-game-app-guafojyerp2zxvntcep732.streamlit.app/
+> （免费版需先登录 Google / GitHub 账号）
+
 《大模型应用实训》实验五 —— 综合项目实战：端到端大模型应用开发。
 
 基于**智谱 GLM（OpenAI 兼容接口）** 打造的 **Windows 桌面应用**，包含两个 AI 互动小游戏：
