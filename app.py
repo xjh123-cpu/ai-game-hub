@@ -35,8 +35,9 @@ if "adv" not in st.session_state:
                             "options": [], "game_over": False, "log": []}
 
 if "quiz" not in st.session_state:
+    # 初始赠送 3 积分：保证新玩家第一题就能兑换提示，之后靠答题赚分
     st.session_state.quiz = {"question": None, "answer": None, "hint": None,
-                             "score": 0, "round": 0, "hint_used": False,
+                             "score": 3, "round": 0, "hint_used": False,
                              "answered": False}
 
 if "call_times" not in st.session_state:
