@@ -5,18 +5,20 @@
 
 《大模型应用实训》实验五 —— 综合项目实战：端到端大模型应用开发。
 
-基于**智谱 GLM（OpenAI 兼容接口）** 打造的 **Windows 桌面应用**，包含两个 AI 互动小游戏：
+基于**智谱 GLM（OpenAI 兼容接口）** 打造的大模型游戏应用，包含两个 AI 互动小游戏。
+同一套 `games/` 业务逻辑提供**两种形态**：云端 **Streamlit 网页版**（`app.py`，已公开部署，供同学直接访问试用）与 **Windows 桌面版**（`main.py` + pywebview，可打包 exe 离线运行）。
 
 | 游戏 | 核心能力 | 温度策略 | 升级亮点 |
 |------|---------|---------|---------|
-| 🏰 AI 文字冒险 | 实时生成剧情、分支选项、结束判定、多轮上下文 | 剧情 0.9（高温） | 存档/读档、回合统计、丰富世界观 |
-| 🧩 AI 猜谜闯关 | AI 出题（含事实核查）、AI 裁判、积分、提示 | 出题 1.0 / 判定与核查 0.0 | 谜底防重复、答对自动连题、初始 3 积分 |
+| 🏰 AI 文字冒险 | 实时生成剧情、分支选项、结束判定、多轮上下文 | 剧情 0.9（高温） | 存档/读档、回合统计、注入攻击三层防护 |
+| 🧩 AI 猜谜闯关 | AI 出题（含事实核查）、AI 裁判、积分、提示 | 出题 1.0 / 判定与核查 0.0 | 谜底防重复防泄露、答对自动连题、初始 3 积分 |
 
 ## 项目结构
 
 ```
 ai-game-hub/
-├── main.py                 # 桌面入口（pywebview 窗口 + js_api 后端）
+├── app.py                  # 【云端主入口】Streamlit 网页版（公开部署用的就是本文件）
+├── main.py                 # 【桌面入口】pywebview 窗口 + js_api 后端
 ├── desktop/                # 前端（HTML/CSS/JS，现代深色风格）
 │   ├── index.html          # 单页应用：大厅 + 冒险 + 猜谜
 │   ├── style.css
@@ -29,7 +31,6 @@ ai-game-hub/
 │   └── quiz.py             # 猜谜逻辑（出题/裁判）
 ├── tests/                  # 12 条测试用例 + LLM-as-Judge 评估
 ├── docs/                   # PRD + 项目报告
-├── app.py                  # （备用）Streamlit 网页版
 ├── build.spec              # PyInstaller 打包配置
 ├── .github/workflows/build-windows.yml  # GitHub Actions 自动打包 exe
 ├── build_windows.bat       # Windows 本地打包脚本（备选）
@@ -43,11 +44,11 @@ ai-game-hub/
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 运行桌面应用（首次启动会弹出 API Key 设置窗口）
-python main.py
-
-# 或运行网页版（可部署到云端）
+# 2. 运行网页版（与云端同一份代码，推荐用作开发调试）
 streamlit run app.py
+
+# 或运行桌面版（Windows，首次启动会弹出 API Key 设置窗口）
+python main.py
 ```
 
 > API Key 可在应用内「⚙️ API Key 设置」中填写，仅保存在本机 `~/.ai_game_hub/config.json`；
@@ -96,6 +97,8 @@ python tests/evaluate.py   # 12 条用例 + LLM-as-Judge 三维度评分
 |--------------|---------|
 | PRD 需求分析（≥1页） | `docs/PRD.md` |
 | 核心功能开发（异常处理/API重试/密钥管理） | `llm.py` 指数退避重试 3 次、统一异常处理、密钥双通道读取 |
-| ≥10 条测试用例 + 评估迭代 | `tests/`（12 条用例，平均分 4.0，全部跑通） |
-| 部署与展示 | Windows 桌面应用（PyInstaller 打包 exe）+ 演示视频 |
+| ≥10 条测试用例 + 评估迭代 | `tests/`（12 条用例 + LLM-as-Judge，平均分 3.76 → 4.06，全部跑通） |
+| 部署与展示（公开链接） | Streamlit Community Cloud 公开部署：<https://ai-game-app-guafojyerp2zxvntcep732.streamlit.app/>（密钥走平台 Secrets + 会话级限流） |
+| 部署与展示（桌面形态） | Windows 桌面版，PyInstaller 打包 `AI游戏乐园.exe`（GitHub Actions 自动构建） |
+| 演示视频（≤3 分钟） | 脚本见 `docs/演示视频脚本.md` |
 | 项目报告 | `docs/项目报告.md` |
