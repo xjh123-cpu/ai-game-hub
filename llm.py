@@ -118,6 +118,26 @@ def _is_retryable(exc: Exception) -> bool:
     )
 
 
+def _friendly_error(exc: Exception) -> str:
+    """把 SDK 抛出的异常翻译成玩家能看懂的中文原因。
+
+    统一异常处理不只是「不崩溃」，还要让用户知道「为什么失败、该怎么办」。
+    """
+    if isinstance(exc, openai.AuthenticationError):
+        return "API Key 无效或已过期，请到「设置」中检查密钥"
+    if isinstance(exc, openai.PermissionDeniedError):
+        return "当前 API Key 无权访问该模型，或账户额度已用尽"
+    if isinstance(exc, openai.NotFoundError):
+        return f"模型「{MODEL}」不存在，请检查 GLM_MODEL 配置"
+    if isinstance(exc, openai.RateLimitError):
+        return "触发了服务端限流（429），请稍后再试"
+    if isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError)):
+        return "连接大模型服务失败，请检查网络或代理设置"
+    if isinstance(exc, openai.BadRequestError):
+        return f"请求参数不合法：{exc}"
+    return str(exc)
+
+
 def chat(messages, temperature=0.7, max_tokens=1024, response_format=None):
     """调用大模型对话接口，带指数退避重试与统一异常处理。
 
@@ -131,7 +151,9 @@ def chat(messages, temperature=0.7, max_tokens=1024, response_format=None):
     """
     client = get_client()
     last_exc = None
+    attempts = 0
     for attempt in range(MAX_RETRIES):
+        attempts = attempt + 1
         try:
             return client.chat.completions.create(
                 model=MODEL,
@@ -142,12 +164,22 @@ def chat(messages, temperature=0.7, max_tokens=1024, response_format=None):
             )
         except Exception as exc:  # noqa: BLE001 - 统一捕获以便重试或抛出
             last_exc = exc
-            if not _is_retryable(exc) or attempt == MAX_RETRIES - 1:
+            if not _is_retryable(exc):
+                # 密钥错误、参数错误等重试也不会成功，立即中断并给出准确原因，
+                # 避免误报「已重试 N 次」误导排查方向
+                raise RuntimeError(
+                    f"大模型调用失败（{type(exc).__name__}，该错误重试无效，"
+                    f"已立即中断）：{_friendly_error(exc)}"
+                ) from exc
+            if attempt == MAX_RETRIES - 1:
                 break
             wait = 2 ** attempt  # 指数退避：1s -> 2s -> 4s
-            logger.warning("第 %d 次调用失败（%s），%ds 后重试", attempt + 1, exc, wait)
+            logger.warning("第 %d 次调用失败（%s），%ds 后重试", attempts, exc, wait)
             time.sleep(wait)
-    raise RuntimeError(f"大模型调用失败（已重试 {MAX_RETRIES} 次）：{last_exc}")
+    raise RuntimeError(
+        f"大模型调用失败（可重试错误，已尝试 {attempts} 次仍失败）："
+        f"{_friendly_error(last_exc)}"
+    ) from last_exc
 
 
 def parse_json(raw: str):

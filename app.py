@@ -3,17 +3,41 @@
 只负责界面与流程编排，业务逻辑通过 import 调用 llm.py / prompts.py / games 包。
 运行方式：streamlit run app.py
 """
+import os
 import time
 
 import streamlit as st
 
 from prompts import ADVENTURE_SYSTEM_PROMPT
+from llm import MODEL
+from games import MAX_ACTION_CHARS, MAX_REPLY_CHARS, MAX_TOPIC_CHARS, clamp_text
 from games.adventure import new_history, adventure_turn
 from games.quiz import ai_quiz, judge
 
-# 智谱 glm-4-flash 为免费模型；此处保留单价占位，便于后续切换付费模型时估算成本
-COST_PER_M_INPUT = 0.0      # 输入单价（元 / 百万 token）
-COST_PER_M_OUTPUT = 0.0     # 输出单价（元 / 百万 token）
+
+def _config_float(name: str, default: float) -> float:
+    """读取浮点配置：环境变量优先，其次 Streamlit Secrets，非法值回退默认。
+
+    双通道与密钥解析保持一致，本地 .env 与云端 Secrets 都能配置同一项。
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        try:
+            raw = st.secrets.get(name)  # 云端部署：从平台 Secrets 读取
+        except Exception:  # noqa: BLE001 - 非 Streamlit 环境或未配置时静默回退
+            raw = None
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+# 成本单价（元 / 百万 token）：默认 0（glm-4-flash 为免费模型）。
+# 切换付费模型时配置 GLM_COST_PER_M_INPUT / GLM_COST_PER_M_OUTPUT 即可计价，无需改代码。
+COST_PER_M_INPUT = _config_float("GLM_COST_PER_M_INPUT", 0.0)
+COST_PER_M_OUTPUT = _config_float("GLM_COST_PER_M_OUTPUT", 0.0)
 
 # ---------------------------------------------------------------------------
 # 限流配置（公开部署防刷量，对应拓展任务）
@@ -88,7 +112,16 @@ st.sidebar.metric("API 调用次数", f"{t['calls']} 次")
 st.sidebar.metric("输入 Token", f"{t['prompt']:,}")
 st.sidebar.metric("输出 Token", f"{t['completion']:,}")
 st.sidebar.metric("总 Token", f"{t['total']:,}")
-st.sidebar.caption(f"预估成本：¥{estimated_cost():.6f}（glm-4-flash 免费模型）")
+if COST_PER_M_INPUT or COST_PER_M_OUTPUT:
+    st.sidebar.caption(
+        f"预估成本：¥{estimated_cost():.6f}"
+        f"（按输入 ¥{COST_PER_M_INPUT}/百万、输出 ¥{COST_PER_M_OUTPUT}/百万 token 计）"
+    )
+else:
+    st.sidebar.caption(
+        f"预估成本：¥0.00（{MODEL} 为免费模型；"
+        f"切换付费模型时配置 GLM_COST_PER_M_INPUT / GLM_COST_PER_M_OUTPUT 即可计价）"
+    )
 st.sidebar.caption(f"🔒 限流：间隔 {RATE_MIN_INTERVAL:.0f}s / 每分钟 {RATE_MAX_PER_MIN} 次 / 每会话 {RATE_SESSION_CAP} 次")
 
 if st.sidebar.button("🔄 重置全部状态"):
@@ -146,6 +179,12 @@ def render_adventure():
 
 def _do_adventure_turn(action: str):
     """执行一轮冒险并更新状态（带一次状态校验失败重试）。"""
+    action, truncated = clamp_text(action, MAX_ACTION_CHARS)
+    if truncated:
+        st.warning(f"输入过长，已自动截取前 {MAX_ACTION_CHARS} 个字符。")
+    if not action:
+        st.warning("请输入有效行动。")
+        return
     if not rate_limit_ok():
         return
     adv = st.session_state.adv
@@ -176,6 +215,12 @@ def _do_adventure_turn(action: str):
 # ===========================================================================
 def _generate_quiz_question(topic: str, difficulty: str):
     """生成一道新题写入会话状态；判定结果横幅随之清除。失败时抛出异常。"""
+    topic, truncated = clamp_text(topic, MAX_TOPIC_CHARS)
+    if truncated:
+        st.warning(f"主题过长，已自动截取前 {MAX_TOPIC_CHARS} 个字符。")
+    if not topic:
+        st.warning("请输入题目主题。")
+        st.stop()
     if not rate_limit_ok():
         st.stop()
     q = st.session_state.quiz
@@ -236,9 +281,12 @@ def render_quiz():
             if submit and reply.strip():
                 if not rate_limit_ok():
                     st.stop()
+                reply, truncated = clamp_text(reply, MAX_REPLY_CHARS)
+                if truncated:
+                    st.warning(f"答案过长，已自动截取前 {MAX_REPLY_CHARS} 个字符。")
                 with st.spinner("AI 裁判判定中…"):
                     try:
-                        result, usage = judge(q["question"], q["answer"], reply.strip())
+                        result, usage = judge(q["question"], q["answer"], reply)
                     except Exception as exc:
                         st.error(f"判定失败：{exc}")
                         return

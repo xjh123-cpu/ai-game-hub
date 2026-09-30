@@ -5,6 +5,7 @@
 """
 import random
 
+from . import MAX_REPLY_CHARS, MAX_TOPIC_CHARS, clamp_text
 from llm import chat_json, usage_of
 from prompts import QUIZ_PROMPT, JUDGE_PROMPT, QUIZ_FACT_CHECK_PROMPT
 
@@ -44,6 +45,11 @@ def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
     连续重试仍不通过则抛出 ValueError，避免把胡编的题发给玩家。
     返回：(data, usage)，data 为 {"question", "answer", "hint"}，usage 为全流程累计 token。
     """
+    # 输入防护：主题过长会挤占提示词并推高成本，统一截断
+    topic, _ = clamp_text(topic, MAX_TOPIC_CHARS)
+    if not topic:
+        raise ValueError("请输入题目主题")
+
     exclude_line = ""
     if exclude_answers:
         items = "、".join(dict.fromkeys(str(a) for a in exclude_answers))
@@ -67,7 +73,7 @@ def ai_quiz(topic: str, difficulty: str = "中等", temperature: float = 1.0,
         )
         _merge_usage(total, usage_of(resp))
         _validate_quiz(data)
-        if _answer_leaked(data):
+        if answer_leaked(data):
             feedback = (f"谜面或提示中直接出现了谜底「{data['answer']}」，"
                         f"泄露了答案，必须用间接描述让玩家猜")
             continue
@@ -91,6 +97,10 @@ def judge(question: str, answer: str, user_reply: str):
     裁判任务需要确定性，temperature 固定为 0.0。
     返回：(result, usage)，result 为 {"correct", "comment"}
     """
+    # 输入防护：玩家回答无需太长，超长内容会推高判定成本
+    user_reply, _ = clamp_text(user_reply, MAX_REPLY_CHARS)
+    if not user_reply:
+        raise ValueError("答案不能为空")
     prompt = JUDGE_PROMPT.format(
         question=question, answer=answer, user_reply=user_reply
     )
@@ -105,7 +115,7 @@ def judge(question: str, answer: str, user_reply: str):
     return data, usage_of(resp)
 
 
-def _answer_leaked(data: dict) -> bool:
+def answer_leaked(data: dict) -> bool:
     """检查谜底是否直接出现在谜面或提示中（泄露答案）。
 
     例如谜面「白天是鸟儿，晚上是兽……名字叫蝙蝠」而谜底为「蝙蝠」，

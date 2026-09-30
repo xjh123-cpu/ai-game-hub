@@ -2,6 +2,7 @@
 
 实现「玩家行动 -> 调用大模型 -> 解析 JSON -> 状态校验 -> 更新历史」的完整循环。
 """
+from . import MAX_ACTION_CHARS, clamp_text
 from llm import chat, parse_json, usage_of
 from prompts import ADVENTURE_SYSTEM_PROMPT
 
@@ -22,6 +23,10 @@ def adventure_turn(history: list, action: str, temperature: float = 0.9, max_ret
     返回：
         (state, usage) 其中 state 为 {"story", "options", "game_over"} 字典
     """
+    # 输入防护：界面层已提示过截断，这里再兜底一次，保证任何调用方都安全
+    action, _ = clamp_text(action, MAX_ACTION_CHARS)
+    if not action:
+        raise ValueError("请输入有效行动")
     history.append({"role": "user", "content": f"玩家行动：{action}"})
     last_err = None
     for attempt in range(max_retries + 1):

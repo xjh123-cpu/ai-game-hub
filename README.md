@@ -27,10 +27,11 @@ ai-game-hub/
 ├── prompts.py              # 提示词模板库
 ├── storage.py              # 本地持久化（配置/最高分/存档）
 ├── games/
+│   ├── __init__.py         # 输入防护（clamp_text 长度约束）
 │   ├── adventure.py        # 文字冒险逻辑（含自我纠错重试）
-│   └── quiz.py             # 猜谜逻辑（出题/裁判）
-├── tests/                  # 12 条测试用例 + LLM-as-Judge 评估
-├── docs/                   # PRD + 项目报告
+│   └── quiz.py             # 猜谜逻辑（出题/事实核查/泄露检测/裁判）
+├── tests/                  # 14 条测试用例 + LLM-as-Judge 评估（支持多次采样）
+├── docs/                   # PRD + 项目报告 + 演示脚本 + 试用反馈记录
 ├── build.spec              # PyInstaller 打包配置
 ├── .github/workflows/build-windows.yml  # GitHub Actions 自动打包 exe
 ├── build_windows.bat       # Windows 本地打包脚本（备选）
@@ -88,8 +89,17 @@ Windows 电脑安装 Python 3.10+ 后，双击 `build_windows.bat`，自动安�
 ## 运行测试与评估
 
 ```bash
-python tests/evaluate.py   # 12 条用例 + LLM-as-Judge 三维度评分
+# 默认：每条用例重复采样 3 次，取均值并计算标准差（跑得久但结论更稳）
+python tests/evaluate.py
+
+# 快速冒烟：单次采样
+python tests/evaluate.py --repeat 1
+
+# 按轮次打标签，便于「基线 vs 改进后」对比
+python tests/evaluate.py --tag baseline   # → tests/evaluation_result_baseline.csv
 ```
+
+其中 **T11 / T13 / T14 为程序级用例**，直接断言代码防护逻辑（空输入拦截、谜面泄露检测、输入截断），不调用大模型、不消耗 token，可离线复现。
 
 ## 实验要求对照
 
@@ -97,7 +107,7 @@ python tests/evaluate.py   # 12 条用例 + LLM-as-Judge 三维度评分
 |--------------|---------|
 | PRD 需求分析（≥1页） | `docs/PRD.md` |
 | 核心功能开发（异常处理/API重试/密钥管理） | `llm.py` 指数退避重试 3 次、统一异常处理、密钥双通道读取 |
-| ≥10 条测试用例 + 评估迭代 | `tests/`（12 条用例 + LLM-as-Judge，平均分 3.76 → 4.06，全部跑通） |
+| ≥10 条测试用例 + 评估迭代 | `tests/`（14 条用例 + LLM-as-Judge，平均分 3.76 → 4.06，全部跑通） |
 | 部署与展示（公开链接） | Streamlit Community Cloud 公开部署：<https://ai-game-app-guafojyerp2zxvntcep732.streamlit.app/>（密钥走平台 Secrets + 会话级限流） |
 | 部署与展示（桌面形态） | Windows 桌面版，PyInstaller 打包 `AI游戏乐园.exe`（GitHub Actions 自动构建） |
 | 演示视频（≤3 分钟） | 脚本见 `docs/演示视频脚本.md` |
